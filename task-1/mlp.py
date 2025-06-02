@@ -109,6 +109,7 @@ class MLP:
             test_results = self.feed_forward(data[0])[1][-1]
             return np.argmax(test_results)
         
+        # To-implement: evaluate for regression
         
     def fit_model(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
         self.SGD(train_data=train_data, n_epochs=n_epochs, learning_rate=learning_rate, batch_size=batch_size, validation_data=validation_data, early_stop_patience=early_stop_patience)
