@@ -88,37 +88,75 @@ class MLP:
         '''
         SGD optimizer on mini-batches to update weights and biases
         '''
-        for epoch in range(n_epochs):
-            random.shuffle(train_data)
-            batches = []
-            for k in range(0, len(train_data), batch_size):
-                batches.append(train_data[k: k + batch_size])
+        losses, accuracies = [], []
+        with open('dataw.txt', 'a+') as file:
+            file.truncate(0)
+            for epoch in range(n_epochs):
+                random.shuffle(train_data)
+                batches = []
+                for k in range(0, len(train_data), batch_size):
+                    batches.append(train_data[k: k + batch_size])
 
-            for batch in batches:
-                self.update_weights(batch, learning_rate)
+                for batch in batches:
+                    self.update_weights(batch, learning_rate)
 
-            if validation_data:
-                print(f'Epoch: {epoch}| Result: {self.evaluate(validation_data)}/{len(validation_data)}')
-            else:
-                print(f'Epoch: {epoch} complete!')
+                if validation_data:
+                    res = self.evaluate(validation_data)
+                    if self.output_activation in ['sigmoid', 'softmax']:
+                        print(f'Epoch: {epoch}| Accuracy: {res[0]/len(validation_data)}, Loss: {res[1]}')
+                        losses.append(res[1])
+                        accuracies.append(res[0]/len(validation_data))
 
+                    else:
+                        losses.append(res[1])
+                        accuracies.append(0)
+                        print(f'Epoch: {epoch}| Loss: {res[1]}')
+
+                    file.write(f'{epoch},{accuracies[-1]},{losses[-1]}\n')
+                    file.flush()
+
+                else:
+                    print(f'Epoch: {epoch} complete!')
+
+
+        return losses, accuracies
         #To-implement: early stopping 
 
     def predict(self, data):
+        test_results = self.feed_forward(data[0])[1][-1]
         if self.output_activation == 'softmax' or self.output_activation == 'sigmoid':
-            test_results = self.feed_forward(data[0])[1][-1]
             return np.argmax(test_results)
         
-        # To-implement: evaluate for regression
+        return test_results
+    
         
     def fit_model(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
-        self.SGD(train_data=train_data, n_epochs=n_epochs, learning_rate=learning_rate, batch_size=batch_size, validation_data=validation_data, early_stop_patience=early_stop_patience)
+        return self.SGD(train_data=train_data, n_epochs=n_epochs, learning_rate=learning_rate, batch_size=batch_size, validation_data=validation_data, early_stop_patience=early_stop_patience)
 
 
     def evaluate(self, validation_data):
         if self.output_activation == 'softmax' or self.output_activation == 'sigmoid':
-            test_results = [(np.argmax(self.feed_forward(x)[1][-1]), np.argmax(y))
-                        for (x, y) in validation_data]
-            return sum(int(x == y) for (x, y) in test_results)
-
-        # To-implement: evaluate for regression
+            test_results = [(self.feed_forward(x)[1][-1], y) for (x, y) in validation_data]
+            loss = 0
+            correct = 0
+            
+            for predictions, y_true in test_results:
+                if self.output_activation == 'sigmoid':
+                    y_binary = np.argmax(y_true) if len(y_true.shape) > 0 and y_true.shape[0] > 1 else y_true
+                    loss += sigmoid_loss(y_binary, predictions)
+                    predicted_class = 1 if predictions > 0.5 else 0
+                    correct += int(predicted_class == y_binary)
+                    
+                else:
+                    loss += softmax_loss(y_true, predictions)
+                    correct += int(np.argmax(predictions) == np.argmax(y_true))
+            
+            return correct, loss / len(validation_data)
+        
+        else:
+            total_loss = 0
+            for x, y in validation_data:
+                prediction = self.feed_forward(x)[1][-1]
+                total_loss += 0.5 * (prediction - y)**2
+            
+            return prediction, total_loss / len(validation_data)

@@ -24,6 +24,6 @@ test_data = prepare_data(test_data)
 
 # Custom-model
 model = MLP([784, 128, 64, 10], output_activation='softmax')
-model.fit_model(train_data=train_data, n_epochs=50, learning_rate=0.1, batch_size=32, validation_data=test_data[:2500])
+l, a = model.fit_model(train_data=train_data, n_epochs=10, learning_rate=0.1, batch_size=32, validation_data=test_data[:2500])
 
 # Final accuracy = 0.8976
