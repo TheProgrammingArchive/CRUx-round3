@@ -1,31 +1,123 @@
 import numpy as np
+import random
 from functions import *
+import copy
 
 class MLP:
-    def __init__(self, layers):
-        self.layers = layers
+    def __init__(self, layers: list, output_activation: str):
+        '''
+            layers: Provide number of neurons per layer in form of a list, [input_layers, hidden1, hidden2, ..., hiddenk, output]
+            output_activation: Change activation function depending on task (classification/regression), optimal loss function is chosen automatically
+        '''
         self.layer_count = len(layers)
-        self.weights, self.biases = [None for _ in range(self.layer_count - 1)], [None for _ in range(self.layer_count - 1)]
-        for k in range(1, self.layer_count):
-            self.weights[k - 1] = np.random.randn(self.layers[k], self.layers[k - 1])
-            self.biases[k - 1] = np.random.randn(self.layers[k], 1)
+        self.hidden_layers = self.layer_count - 1
+        self.layers = layers
+        self.output_activation = output_activation
+        
+        # Randomly initialize weights
+        self.weights = [np.random.randn(y, x) * np.sqrt(2.0 / (x + y))
+                        for x, y in zip(layers[:-1], layers[1:])]
+        self.biases = [np.random.randn(y, 1) for y in layers[1: ]]
 
-    def feed_forward(self, activation) -> list:
-        '''
-            Feed data through the layers, activation of layer l = w(l).a(l - 1) + b(l)
-        '''
-        z_vectors, activations = [], []
-        for k in range(self.layer_count - 1):
-            z_vectors.append(np.dot(self.weights[k], activation[k]) + self.bias[k])
-            activation = sigmoid(np.dot(self.weights[k], activation[k]) + self.bias[k])
+
+    def feed_forward(self, activation):
+        z_vectors = []
+        activations = [activation]
+        current_layer = 0
+
+        for weight, bias in zip(self.weights, self.biases):
+            z_vector = np.dot(weight, activation) + bias
+            if current_layer == self.hidden_layers:
+                if self.output_activation == 'sigmoid':
+                    activation = sigmoid(z_vector)
+
+                elif self.output_activation == 'softmax':
+                    activation = softmax(z_vector)
+
+                else:
+                    activation = z_vector
+
+            else:
+                activation = sigmoid(z_vector)
+
+            current_layer += 1
+            z_vectors.append(z_vector)
             activations.append(activation)
 
         return z_vectors, activations
+    
+
+    def update_weights(self, batch, learning_rate):
+        weight_update = [np.zeros(w.shape) for w in self.weights]
+        bias_update = [np.zeros(b.shape) for b in self.biases]
+        for X, y in batch:
+            grad_c_wrt_bias, grad_c_wrt_weights = self.back_propagate(X, y)
+            weight_update = [wu + du for wu, du in zip(weight_update, grad_c_wrt_weights)]
+            bias_update = [bu + du for bu, du in zip(bias_update, grad_c_wrt_bias)]
+
+        self.weights = [weight - (learning_rate/len(batch))*update for weight, update in zip(self.weights, weight_update)]
+        self.biases = [bias - (learning_rate/len(batch))*update for bias, update in zip(self.biases, bias_update)]
 
     def back_propagate(self, x, y):
-        cost_grad_wrt_bias = [np.zeros(bias.shape) for bias in self.biases]
-        cost_grad_wrt_weights = [np.zeros(weights.shape) for weights in self.weights]
-        activations = [x]   
+        z_vectors, activations = self.feed_forward(x)
+        if self.output_activation == 'sigmoid':
+            # MSE loss
+            delta = (activations[-1] - y)*sigmoid_prime(z_vectors[-1])
+        elif self.output_activation == 'softmax':
+            # Assumes cross-entropy loss
+            delta = (activations[-1] - y) 
+        else:
+            # MSE loss
+            delta = (activations[-1] - y)
+        
+        grad_c_wrt_weights = [np.zeros(w.shape) for w in self.weights]
+        grad_c_wrt_bias = [np.zeros(b.shape) for b in self.biases]
 
-net = MLP([2, 4, 1])
-net.print_weights()
+        grad_c_wrt_bias[-1] = delta
+        grad_c_wrt_weights[-1] = np.outer(delta, activations[-2].T)
+
+        for layer in range(2, self.layer_count):
+            delta = np.dot(self.weights[-layer + 1].transpose(), delta) * sigmoid_prime(z_vectors[-layer])
+            grad_c_wrt_bias[-layer] = delta
+            grad_c_wrt_weights[-layer] = np.outer(delta, activations[-layer - 1].T)
+
+        return grad_c_wrt_bias, grad_c_wrt_weights
+    
+
+    def SGD(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
+        '''
+        SGD optimizer on mini-batches to update weights and biases
+        '''
+        for epoch in range(n_epochs):
+            random.shuffle(train_data)
+            batches = []
+            for k in range(0, len(train_data), batch_size):
+                batches.append(train_data[k: k + batch_size])
+
+            for batch in batches:
+                self.update_weights(batch, learning_rate)
+
+            if validation_data:
+                print(f'Epoch: {epoch}| Result: {self.evaluate(validation_data)}/{len(validation_data)}')
+            else:
+                print(f'Epoch: {epoch} complete!')
+
+        #To-implement: early stopping 
+
+    def predict(self, data):
+        if self.output_activation == 'softmax' or self.output_activation == 'sigmoid':
+            test_results = self.feed_forward(data[0])[1][-1]
+            return np.argmax(test_results)
+        
+        
+    def fit_model(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
+        self.SGD(train_data=train_data, n_epochs=n_epochs, learning_rate=learning_rate, batch_size=batch_size, validation_data=validation_data, early_stop_patience=early_stop_patience)
+
+
+    def evaluate(self, validation_data):
+        if self.output_activation == 'softmax' or self.output_activation == 'sigmoid':
+            test_results = [(np.argmax(self.feed_forward(x)[1][-1]), np.argmax(y))
+                        for (x, y) in validation_data]
+            return sum(int(x == y) for (x, y) in test_results)
+
+        # To-implement: evaluate for regression
