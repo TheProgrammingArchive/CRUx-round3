@@ -4,7 +4,7 @@ from functions import *
 import copy
 
 class MLP:
-    def __init__(self, layers: list, output_activation: str):
+    def __init__(self, layers: list):
         '''
             layers: Provide number of neurons per layer in form of a list, [input_layers, hidden1, hidden2, ..., hiddenk, output]
             output_activation: Change activation function depending on task (classification/regression), optimal loss function is chosen automatically
@@ -12,7 +12,6 @@ class MLP:
         self.layer_count = len(layers)
         self.hidden_layers = self.layer_count - 1
         self.layers = layers
-        self.output_activation = output_activation
         
         # Randomly initialize weights
         self.weights = [np.random.randn(y, x) * np.sqrt(2.0 / (x + y))
@@ -28,14 +27,7 @@ class MLP:
         for weight, bias in zip(self.weights, self.biases):
             z_vector = np.dot(weight, activation) + bias
             if current_layer == self.hidden_layers:
-                if self.output_activation == 'sigmoid':
-                    activation = sigmoid(z_vector)
-
-                elif self.output_activation == 'softmax':
-                    activation = softmax(z_vector)
-
-                else:
-                    activation = z_vector
+                activation = softmax(z_vector)
 
             else:
                 activation = sigmoid(z_vector)
@@ -60,15 +52,7 @@ class MLP:
 
     def back_propagate(self, x, y):
         z_vectors, activations = self.feed_forward(x)
-        if self.output_activation == 'sigmoid':
-            # MSE loss
-            delta = (activations[-1] - y)*sigmoid_prime(z_vectors[-1])
-        elif self.output_activation == 'softmax':
-            # Assumes cross-entropy loss
-            delta = (activations[-1] - y) 
-        else:
-            # MSE loss
-            delta = (activations[-1] - y)
+        delta = activations[-1] - y
         
         grad_c_wrt_weights = [np.zeros(w.shape) for w in self.weights]
         grad_c_wrt_bias = [np.zeros(b.shape) for b in self.biases]
@@ -78,6 +62,7 @@ class MLP:
 
         for layer in range(2, self.layer_count):
             delta = np.dot(self.weights[-layer + 1].transpose(), delta) * sigmoid_prime(z_vectors[-layer])
+
             grad_c_wrt_bias[-layer] = delta
             grad_c_wrt_weights[-layer] = np.outer(delta, activations[-layer - 1].T)
 
@@ -102,15 +87,10 @@ class MLP:
 
                 if validation_data:
                     res = self.evaluate(validation_data)
-                    if self.output_activation in ['sigmoid', 'softmax']:
-                        print(f'Epoch: {epoch}| Accuracy: {res[0]/len(validation_data)}, Loss: {res[1]}')
-                        losses.append(res[1])
-                        accuracies.append(res[0]/len(validation_data))
+                    print(f'Epoch: {epoch}| Accuracy: {res[0]/len(validation_data)}, Loss: {res[1]}')
+                    losses.append(res[1])
+                    accuracies.append(res[0]/len(validation_data))
 
-                    else:
-                        losses.append(res[1])
-                        accuracies.append(0)
-                        print(f'Epoch: {epoch}| Loss: {res[1]}')
 
                     file.write(f'{epoch},{accuracies[-1]},{losses[-1]}\n')
                     file.flush()
@@ -123,11 +103,9 @@ class MLP:
         #To-implement: early stopping 
 
     def predict(self, data):
-        test_results = self.feed_forward(data[0])[1][-1]
-        if self.output_activation == 'softmax' or self.output_activation == 'sigmoid':
-            return np.argmax(test_results)
+        test_results = self.feed_forward(data)[1][-1]
         
-        return test_results
+        return np.argmax(test_results)
     
         
     def fit_model(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
@@ -135,28 +113,12 @@ class MLP:
 
 
     def evaluate(self, validation_data):
-        if self.output_activation == 'softmax' or self.output_activation == 'sigmoid':
-            test_results = [(self.feed_forward(x)[1][-1], y) for (x, y) in validation_data]
-            loss = 0
-            correct = 0
-            
-            for predictions, y_true in test_results:
-                if self.output_activation == 'sigmoid':
-                    y_binary = np.argmax(y_true) if len(y_true.shape) > 0 and y_true.shape[0] > 1 else y_true
-                    loss += sigmoid_loss(y_binary, predictions)
-                    predicted_class = 1 if predictions > 0.5 else 0
-                    correct += int(predicted_class == y_binary)
-                    
-                else:
-                    loss += softmax_loss(y_true, predictions)
-                    correct += int(np.argmax(predictions) == np.argmax(y_true))
-            
-            return correct, loss / len(validation_data)
+        test_results = [(self.feed_forward(x)[1][-1], y) for (x, y) in validation_data]
+        loss = 0
+        correct = 0
         
-        else:
-            total_loss = 0
-            for x, y in validation_data:
-                prediction = self.feed_forward(x)[1][-1]
-                total_loss += 0.5 * (prediction - y)**2
-            
-            return prediction, total_loss / len(validation_data)
+        for predictions, y_true in test_results:
+            loss += softmax_loss(y_true, predictions)
+            correct += int(np.argmax(predictions) == np.argmax(y_true))
+        
+        return correct, loss / len(validation_data)
