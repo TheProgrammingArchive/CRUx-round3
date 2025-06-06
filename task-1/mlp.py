@@ -3,6 +3,43 @@ import random
 from functions import *
 import copy
 
+class EarlyStopping:
+    def __init__(self, monitor='acc', patience=1, restore_best_weights=True, min_delta=0):
+        self.monitor = monitor
+        self.patience = patience
+        self.restore_best_weights = restore_best_weights
+        self.iters_to_patience = 0
+        self.min_delta = min_delta
+
+        if monitor == 'acc':
+            self.curr = 0
+
+        elif monitor == 'loss':
+            self.curr = float('inf')
+
+    def continue_training(self, epoch_results: tuple):
+        if self.monitor == 'acc':
+            acc = epoch_results['acc']
+            if acc > self.curr + self.min_delta:
+                self.curr = acc
+                self.iters_to_patience = 0
+            else:
+                self.iters_to_patience += 1
+
+        else:
+            loss = epoch_results['loss']
+            if loss < self.curr - self.min_delta:
+                self.curr = loss
+                self.iters_to_patience = 0
+
+            else:
+                self.iters_to_patience += 1
+
+        if self.iters_to_patience == self.patience:
+            return False
+        
+        return True
+    
 class MLP:
     def __init__(self, layers: list):
         '''
@@ -50,6 +87,7 @@ class MLP:
         self.weights = [weight - (learning_rate/len(batch))*update for weight, update in zip(self.weights, weight_update)]
         self.biases = [bias - (learning_rate/len(batch))*update for bias, update in zip(self.biases, bias_update)]
 
+
     def back_propagate(self, x, y):
         z_vectors, activations = self.feed_forward(x)
         delta = activations[-1] - y
@@ -69,11 +107,14 @@ class MLP:
         return grad_c_wrt_bias, grad_c_wrt_weights
     
 
-    def SGD(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
+    def fit(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop=None, return_weights_biases=False):
         '''
         SGD optimizer on mini-batches to update weights and biases
         '''
         losses, accuracies = [], []
+
+        best_weights, best_biases = None, None
+
         with open('dataw.txt', 'a+') as file:
             file.truncate(0)
             for epoch in range(n_epochs):
@@ -98,18 +139,27 @@ class MLP:
                 else:
                     print(f'Epoch: {epoch} complete!')
 
+                if early_stop:
+                    cnt_trn = early_stop.continue_training({'acc': accuracies[-1], 'loss': losses[-1]})
+                    if not cnt_trn:
+                        if early_stop.restore_best_weights:
+                            self.weights = copy.deepcopy(best_weights)
+                            self.biases = copy.deepcopy(best_biases)
 
+                        print(f'Early stopping called, training stopped on epoch: {epoch}. No improvement in metrics for {early_stop.patience} epochs')
+                        break
+
+                    else:
+                        best_weights, best_biases = self.weights, self.biases
+
+        if return_weights_biases:
+            return losses, accuracies, self.weights, self.biases
         return losses, accuracies
-        #To-implement: early stopping 
 
     def predict(self, data):
         test_results = self.feed_forward(data)[1][-1]
         
         return np.argmax(test_results)
-    
-        
-    def fit_model(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
-        return self.SGD(train_data=train_data, n_epochs=n_epochs, learning_rate=learning_rate, batch_size=batch_size, validation_data=validation_data, early_stop_patience=early_stop_patience)
 
 
     def evaluate(self, validation_data):
@@ -122,3 +172,7 @@ class MLP:
             correct += int(np.argmax(predictions) == np.argmax(y_true))
         
         return correct, loss / len(validation_data)
+    
+def grid_search(param_grid: dict):
+    layers = param_grid.get('layers')
+    

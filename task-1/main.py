@@ -1,6 +1,6 @@
 import numpy as np
 import keras
-from mlp import MLP
+from mlp import MLP, EarlyStopping
 from sklearn.linear_model import SGDClassifier
 
 def prepare_data(data):
@@ -25,6 +25,7 @@ test_data = prepare_data(test_data)
 
 # Custom-model
 model = MLP([784, 128, 64, 10])
-l, a = model.fit_model(train_data=train_data, n_epochs=10, learning_rate=0.1, batch_size=32, validation_data=test_data[:2500])
+estop = EarlyStopping(monitor='loss', patience=2, restore_best_weights=True)
+l, a = model.fit(train_data=train_data, n_epochs=10, learning_rate=0.1, batch_size=32, validation_data=test_data[:2500], early_stop=estop)
 
 # Final accuracy = 0.89760
