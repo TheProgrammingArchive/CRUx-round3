@@ -2,12 +2,17 @@ import numpy as np
 import random
 from functions import *
 import copy
+import itertools
 
 class EarlyStopping:
     def __init__(self, monitor='acc', patience=1, restore_best_weights=True, min_delta=0):
         self.monitor = monitor
+
+        assert(patience > 0)
+
         self.patience = patience
         self.restore_best_weights = restore_best_weights
+
         self.iters_to_patience = 0
         self.min_delta = min_delta
 
@@ -132,14 +137,13 @@ class MLP:
                     losses.append(res[1])
                     accuracies.append(res[0]/len(validation_data))
 
-
                     file.write(f'{epoch},{accuracies[-1]},{losses[-1]}\n')
                     file.flush()
 
                 else:
                     print(f'Epoch: {epoch} complete!')
 
-                if early_stop:
+                if early_stop and validation_data:
                     cnt_trn = early_stop.continue_training({'acc': accuracies[-1], 'loss': losses[-1]})
                     if not cnt_trn:
                         if early_stop.restore_best_weights:
@@ -173,6 +177,47 @@ class MLP:
         
         return correct, loss / len(validation_data)
     
-def grid_search(param_grid: dict):
-    layers = param_grid.get('layers')
+def grid_search(train_data, test_data, param_grid: dict, metric='acc') -> MLP:
+    layer_combs = param_grid.get('layers')
+    learning_rates = param_grid.get('learning_rate')
+    batch_sizes = param_grid.get('batch_size')
+    epochs = param_grid.get('n_epochs')
+
+    if layer_combs is None or learning_rates is None or batch_sizes is None or train_data is None or test_data is None:
+        raise Exception("Grid search paramters cannot be none, validation data must be provided")
     
+    combined = [layer_combs, learning_rates, batch_sizes, epochs]
+    combinations = itertools.product(*combined)
+
+    weights, biases = None, None
+    layers, lr, bsz, ne = None, None, None, None
+    best_metric = float('inf') if metric == 'loss' else 0
+    for comb in combinations:
+        print(f'Training with combination: {comb}')
+        l, a, w, b = MLP(layers=comb[0]).fit(train_data=train_data, validation_data=test_data, n_epochs=comb[3], learning_rate=comb[1], batch_size=comb[2], 
+                                        return_weights_biases=True, early_stop=EarlyStopping(metric, 5, True, 0))
+        
+        if metric == 'loss':
+            if l[-5] < best_metric:
+                best_metric = l[-5]
+                weights, biases = w, b
+                layers = comb[0]
+                lr = comb[1]
+                bsz = comb[2]
+                ne = comb[3]
+
+        else:
+            if a[-5] > best_metric:
+                best_metric = a[-5]
+                weights, biases = w, b
+                layers = comb[0]
+                lr = comb[1]
+                bsz = comb[2]
+                ne = comb[3]
+
+        print(f'Best metric so far: {best_metric} {metric}')
+
+    best_model = MLP(layers)
+    best_model.weights, best_model.biases = weights, biases
+
+    return best_model, {'layers': layers, 'n_epochs': ne, 'batch_size': bsz, 'learning_rate': lr}
