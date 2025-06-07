@@ -2,9 +2,51 @@ import numpy as np
 import random
 from functions import *
 import copy
+import itertools
 
+class EarlyStopping:
+    def __init__(self, monitor='acc', patience=1, restore_best_weights=True, min_delta=0):
+        self.monitor = monitor
+
+        assert(patience > 0)
+
+        self.patience = patience
+        self.restore_best_weights = restore_best_weights
+
+        self.iters_to_patience = 0
+        self.min_delta = min_delta
+
+        if monitor == 'acc':
+            self.curr = 0
+
+        elif monitor == 'loss':
+            self.curr = float('inf')
+
+    def continue_training(self, epoch_results: tuple):
+        if self.monitor == 'acc':
+            acc = epoch_results['acc']
+            if acc > self.curr + self.min_delta:
+                self.curr = acc
+                self.iters_to_patience = 0
+            else:
+                self.iters_to_patience += 1
+
+        else:
+            loss = epoch_results['loss']
+            if loss < self.curr - self.min_delta:
+                self.curr = loss
+                self.iters_to_patience = 0
+
+            else:
+                self.iters_to_patience += 1
+
+        if self.iters_to_patience == self.patience:
+            return False
+        
+        return True
+    
 class MLP:
-    def __init__(self, layers: list, output_activation: str):
+    def __init__(self, layers: list):
         '''
             layers: Provide number of neurons per layer in form of a list, [input_layers, hidden1, hidden2, ..., hiddenk, output]
             output_activation: Change activation function depending on task (classification/regression), optimal loss function is chosen automatically
@@ -12,7 +54,6 @@ class MLP:
         self.layer_count = len(layers)
         self.hidden_layers = self.layer_count - 1
         self.layers = layers
-        self.output_activation = output_activation
         
         # Randomly initialize weights
         self.weights = [np.random.randn(y, x) * np.sqrt(2.0 / (x + y))
@@ -28,14 +69,7 @@ class MLP:
         for weight, bias in zip(self.weights, self.biases):
             z_vector = np.dot(weight, activation) + bias
             if current_layer == self.hidden_layers:
-                if self.output_activation == 'sigmoid':
-                    activation = sigmoid(z_vector)
-
-                elif self.output_activation == 'softmax':
-                    activation = softmax(z_vector)
-
-                else:
-                    activation = z_vector
+                activation = softmax(z_vector)
 
             else:
                 activation = sigmoid(z_vector)
@@ -58,17 +92,10 @@ class MLP:
         self.weights = [weight - (learning_rate/len(batch))*update for weight, update in zip(self.weights, weight_update)]
         self.biases = [bias - (learning_rate/len(batch))*update for bias, update in zip(self.biases, bias_update)]
 
+
     def back_propagate(self, x, y):
         z_vectors, activations = self.feed_forward(x)
-        if self.output_activation == 'sigmoid':
-            # MSE loss
-            delta = (activations[-1] - y)*sigmoid_prime(z_vectors[-1])
-        elif self.output_activation == 'softmax':
-            # Assumes cross-entropy loss
-            delta = (activations[-1] - y) 
-        else:
-            # MSE loss
-            delta = (activations[-1] - y)
+        delta = activations[-1] - y
         
         grad_c_wrt_weights = [np.zeros(w.shape) for w in self.weights]
         grad_c_wrt_bias = [np.zeros(b.shape) for b in self.biases]
@@ -78,17 +105,21 @@ class MLP:
 
         for layer in range(2, self.layer_count):
             delta = np.dot(self.weights[-layer + 1].transpose(), delta) * sigmoid_prime(z_vectors[-layer])
+
             grad_c_wrt_bias[-layer] = delta
             grad_c_wrt_weights[-layer] = np.outer(delta, activations[-layer - 1].T)
 
         return grad_c_wrt_bias, grad_c_wrt_weights
     
 
-    def SGD(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
+    def fit(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop=None, return_weights_biases=False):
         '''
         SGD optimizer on mini-batches to update weights and biases
         '''
         losses, accuracies = [], []
+
+        best_weights, best_biases = None, None
+
         with open('dataw.txt', 'a+') as file:
             file.truncate(0)
             for epoch in range(n_epochs):
@@ -102,15 +133,9 @@ class MLP:
 
                 if validation_data:
                     res = self.evaluate(validation_data)
-                    if self.output_activation in ['sigmoid', 'softmax']:
-                        print(f'Epoch: {epoch}| Accuracy: {res[0]/len(validation_data)}, Loss: {res[1]}')
-                        losses.append(res[1])
-                        accuracies.append(res[0]/len(validation_data))
-
-                    else:
-                        losses.append(res[1])
-                        accuracies.append(0)
-                        print(f'Epoch: {epoch}| Loss: {res[1]}')
+                    print(f'Epoch: {epoch}| Accuracy: {res[0]/len(validation_data)}, Loss: {res[1]}')
+                    losses.append(res[1])
+                    accuracies.append(res[0]/len(validation_data))
 
                     file.write(f'{epoch},{accuracies[-1]},{losses[-1]}\n')
                     file.flush()
@@ -118,45 +143,81 @@ class MLP:
                 else:
                     print(f'Epoch: {epoch} complete!')
 
+                if early_stop and validation_data:
+                    cnt_trn = early_stop.continue_training({'acc': accuracies[-1], 'loss': losses[-1]})
+                    if not cnt_trn:
+                        if early_stop.restore_best_weights:
+                            self.weights = copy.deepcopy(best_weights)
+                            self.biases = copy.deepcopy(best_biases)
 
+                        print(f'Early stopping called, training stopped on epoch: {epoch}. No improvement in metrics for {early_stop.patience} epochs')
+                        break
+
+                    else:
+                        best_weights, best_biases = self.weights, self.biases
+
+        if return_weights_biases:
+            return losses, accuracies, self.weights, self.biases
         return losses, accuracies
-        #To-implement: early stopping 
 
     def predict(self, data):
-        test_results = self.feed_forward(data[0])[1][-1]
-        if self.output_activation == 'softmax' or self.output_activation == 'sigmoid':
-            return np.argmax(test_results)
+        test_results = self.feed_forward(data)[1][-1]
         
-        return test_results
-    
-        
-    def fit_model(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop_patience: int=None):
-        return self.SGD(train_data=train_data, n_epochs=n_epochs, learning_rate=learning_rate, batch_size=batch_size, validation_data=validation_data, early_stop_patience=early_stop_patience)
+        return np.argmax(test_results)
 
 
     def evaluate(self, validation_data):
-        if self.output_activation == 'softmax' or self.output_activation == 'sigmoid':
-            test_results = [(self.feed_forward(x)[1][-1], y) for (x, y) in validation_data]
-            loss = 0
-            correct = 0
-            
-            for predictions, y_true in test_results:
-                if self.output_activation == 'sigmoid':
-                    y_binary = np.argmax(y_true) if len(y_true.shape) > 0 and y_true.shape[0] > 1 else y_true
-                    loss += sigmoid_loss(y_binary, predictions)
-                    predicted_class = 1 if predictions > 0.5 else 0
-                    correct += int(predicted_class == y_binary)
-                    
-                else:
-                    loss += softmax_loss(y_true, predictions)
-                    correct += int(np.argmax(predictions) == np.argmax(y_true))
-            
-            return correct, loss / len(validation_data)
+        test_results = [(self.feed_forward(x)[1][-1], y) for (x, y) in validation_data]
+        loss = 0
+        correct = 0
         
+        for predictions, y_true in test_results:
+            loss += softmax_loss(y_true, predictions)
+            correct += int(np.argmax(predictions) == np.argmax(y_true))
+        
+        return correct, loss / len(validation_data)
+    
+def grid_search(train_data, test_data, param_grid: dict, metric='acc') -> MLP:
+    layer_combs = param_grid.get('layers')
+    learning_rates = param_grid.get('learning_rate')
+    batch_sizes = param_grid.get('batch_size')
+    epochs = param_grid.get('n_epochs')
+
+    if layer_combs is None or learning_rates is None or batch_sizes is None or train_data is None or test_data is None:
+        raise Exception("Grid search paramters cannot be none, validation data must be provided")
+    
+    combined = [layer_combs, learning_rates, batch_sizes, epochs]
+    combinations = itertools.product(*combined)
+
+    weights, biases = None, None
+    layers, lr, bsz, ne = None, None, None, None
+    best_metric = float('inf') if metric == 'loss' else 0
+    for comb in combinations:
+        print(f'Training with combination: {comb}')
+        l, a, w, b = MLP(layers=comb[0]).fit(train_data=train_data, validation_data=test_data, n_epochs=comb[3], learning_rate=comb[1], batch_size=comb[2], 
+                                        return_weights_biases=True, early_stop=EarlyStopping(metric, 5, True, 0))
+        
+        if metric == 'loss':
+            if l[-5] < best_metric:
+                best_metric = l[-5]
+                weights, biases = w, b
+                layers = comb[0]
+                lr = comb[1]
+                bsz = comb[2]
+                ne = comb[3]
+
         else:
-            total_loss = 0
-            for x, y in validation_data:
-                prediction = self.feed_forward(x)[1][-1]
-                total_loss += 0.5 * (prediction - y)**2
-            
-            return prediction, total_loss / len(validation_data)
+            if a[-5] > best_metric:
+                best_metric = a[-5]
+                weights, biases = w, b
+                layers = comb[0]
+                lr = comb[1]
+                bsz = comb[2]
+                ne = comb[3]
+
+        print(f'Best metric so far: {best_metric} {metric}')
+
+    best_model = MLP(layers)
+    best_model.weights, best_model.biases = weights, biases
+
+    return best_model, {'layers': layers, 'n_epochs': ne, 'batch_size': bsz, 'learning_rate': lr}

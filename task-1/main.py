@@ -1,6 +1,6 @@
 import numpy as np
 import keras
-from mlp import MLP
+from mlp import MLP, EarlyStopping, grid_search
 from sklearn.linear_model import SGDClassifier
 
 def prepare_data(data):
@@ -16,14 +16,19 @@ def prepare_data(data):
 
     return list(zip(X, y_fin))
 
+
 data = keras.datasets.fashion_mnist.load_data()
 train_data, test_data = data
 
 train_data = prepare_data(train_data)
 test_data = prepare_data(test_data)
 
-# Custom-model
-model = MLP([784, 128, 64, 10], output_activation='softmax')
-l, a = model.fit_model(train_data=train_data, n_epochs=10, learning_rate=0.1, batch_size=32, validation_data=test_data[:2500])
+# # Custom-model
+# model = MLP([784, 128, 64, 10])
+# estop = EarlyStopping(monitor='loss', patience=2, restore_best_weights=True)
+# l, a = model.fit(train_data=train_data, n_epochs=10, learning_rate=0.1, batch_size=32, validation_data=test_data[:2500], early_stop=estop)
 
-# Final accuracy = 0.8976
+best_model, best_params = grid_search(train_data=train_data, test_data=test_data, param_grid={'layers': [[784, 32, 10], [784, 128, 64, 10]], 'n_epochs': [10], 'learning_rate': [1, 0.1], 'batch_size': [16, 32]})
+# Best accuracy = 0.8682
+
+# Best accuracy overall = 0.89760, obtained with learning rate=0.1 and 50 epochs and batch size of 32
