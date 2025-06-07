@@ -7,7 +7,7 @@ import os
 import matplotlib.pyplot as plt
 import pickle
 import torch
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 
 from facenet_pytorch import InceptionResnetV1
 
@@ -32,9 +32,11 @@ def extract_face(img_dir):
 
     return face_array
 
-def extract_faces(data_dir):
+def extract_faces():
     faces = []
     dirs_of_face = []
+
+    failed = []
 
     for dirs in os.listdir('Celebrity Faces Dataset'):
         for file in os.listdir(f'Celebrity Faces Dataset/{dirs}'):
@@ -45,20 +47,24 @@ def extract_faces(data_dir):
                 dirs_of_face.append(dirs)
             except Exception as e:
                 print(e)
+                failed.append(f'/{dirs}/{file}')
                 print(f'Failed to extract face from file /{dirs}/{file}')
+    
+    for files in failed:
+        os.remove(f'Celebrity Faces Dataset{files}')
 
     return faces
 
-def face_dir_mapping(data_dir):
+def face_dir_mapping():
     face_dir_mapping = []
-    for dirs in os.listdir(f'Celebrity Faces Dataset/'):
+    for dirs in os.listdir('Celebrity Faces Dataset'):
         face_dir_mapping.extend([dirs for _ in range(len(os.listdir(f'Celebrity Faces Dataset/{dirs}')))])
 
     return face_dir_mapping
 
-def get_embeddings(data_dir):
+def get_embeddings():
     if not os.path.exists('data.bin'):
-        extracted_faces = extract_faces(data_dir)
+        extracted_faces = extract_faces()
         with open('data.bin', 'wb') as f:
             pickle.dump(extracted_faces, f)
     
@@ -88,11 +94,41 @@ def get_embeddings(data_dir):
         with open('embeddings.bin', 'rb') as f:
             return pickle.load(f)
 
-def cluster(data_dir):
-    embeddings = get_embeddings(data_dir)
+def cluster():
+    embeddings = get_embeddings()
 
-    model = KMeans(n_clusters=17)
-    return model.fit_predict(np.array([k.detach().numpy() for k in embeddings])), model.cluster_centers_
+    clustering_alg = KMeans(n_clusters=17, random_state=42)
+    
+    return clustering_alg.fit_predict(np.array([k.detach().numpy() for k in embeddings])), clustering_alg.cluster_centers_, clustering_alg
 
-clusters_for_each_img, centers = cluster('Celebrity Faces Dataset')
-print(centers)
+def sort_into_groups():
+    predicted_clusters, centers, alg = cluster()
+    directory_img_mapping = face_dir_mapping()
+
+    cluster_idx_to_person = {}
+    border, start = 0, 0
+    for k in range(len(directory_img_mapping)):
+        if k == len(directory_img_mapping) - 1:
+            cluster_res = list(predicted_clusters[start: len(directory_img_mapping)])
+            cluster_idx_to_person[directory_img_mapping[start]] = [max(set(cluster_res), key=cluster_res.count), 1 - (len(cluster_res) - cluster_res.count(max(set(cluster_res), key=cluster_res.count)))/len(cluster_res)]
+            break
+       
+        if directory_img_mapping[k] != directory_img_mapping[k + 1]:
+            border = k
+            cluster_res = list(predicted_clusters[start: border + 1])
+            cluster_idx_to_person[directory_img_mapping[k]] = [max(set(cluster_res), key=cluster_res.count), 1 - (len(cluster_res) - cluster_res.count(max(set(cluster_res), key=cluster_res.count)))/len(cluster_res)]
+
+            start = k + 1
+
+    return cluster_idx_to_person
+
+def find_corresponding_cluster(img_file):
+    ext = extract_face(img_file)
+    tensor = torch.tensor(ext, dtype=torch.float32).permute(2, 0, 1)
+    tensor = (tensor / 127.5) - 1.0
+    tensor = tensor.unsqueeze(0)
+    embeds = InceptionResnetV1(pretrained='vggface2').eval()(tensor)
+    embeds = embeds.squeeze(0)
+
+    res, centers, model = cluster()
+    return model.predict(np.array([embeds.detach().numpy()]))
