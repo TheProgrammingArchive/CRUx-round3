@@ -154,7 +154,7 @@ class MLP:
                         break
 
                     else:
-                        best_weights, best_biases = self.weights, self.biases
+                        best_weights, best_biases = copy.deepcopy(self.weights), copy.deepcopy(self.biases)
 
         if return_weights_biases:
             return losses, accuracies, self.weights, self.biases
