@@ -47,11 +47,11 @@ def extract_faces():
                 dirs_of_face.append(dirs)
             except Exception as e:
                 print(e)
-                failed.append(f'/{dirs}/{file}')
+                failed.append(f'{dirs}/{file}')
                 print(f'Failed to extract face from file /{dirs}/{file}')
     
     for files in failed:
-        os.remove(f'Celebrity Faces Dataset{files}')
+        os.remove(f'Celebrity Faces Dataset/{files}')
 
     return faces
 
