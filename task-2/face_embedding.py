@@ -12,6 +12,17 @@ from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 from facenet_pytorch import InceptionResnetV1
 
 def extract_face(img_dir):
+    '''
+    Uses MTCNN's pretrained model to place bounding boxes on faces and crop out only faces from images, returns this cropped out 
+
+    Parameters
+    --------------------------------
+    img_dir: file path to image
+    
+    Returns
+    --------------------------------
+    np.ndarray
+    '''
     img = Image.open(img_dir)
     img_arr = np.asarray(img)
 
@@ -33,6 +44,18 @@ def extract_face(img_dir):
     return face_array
 
 def extract_faces():
+    '''
+    Extract face array of all faces by going through all files in 'Celebrity Faces Dataset'
+    Note: The directory containing all images must be named 'Celebrity Faces Dataset'
+
+    Parameters
+    ---------------------
+    None
+
+    Returns
+    ---------------------
+    list
+    '''
     faces = []
     dirs_of_face = []
 
@@ -56,6 +79,16 @@ def extract_faces():
     return faces
 
 def face_dir_mapping():
+    '''
+    Returns the name of the person corresponding to elements in face array
+
+    Parameters 
+    ------------------------------
+
+    Returns
+    ------------------------------
+    list
+    '''
     face_dir_mapping = []
     for dirs in os.listdir('Celebrity Faces Dataset'):
         face_dir_mapping.extend([dirs for _ in range(len(os.listdir(f'Celebrity Faces Dataset/{dirs}')))])
@@ -63,6 +96,18 @@ def face_dir_mapping():
     return face_dir_mapping
 
 def get_embeddings():
+    '''
+    Uses pytorch's InceptionResnetV1 model to extract embeddings (512 dimensional) from face_array and caches the result in embeddings.bin for future use, 
+    when run for the first time, it will store all extracted face arrays in data.bin
+
+    Parameters
+    -----------------------
+    None
+
+    Returns
+    -----------------------
+    list
+    '''
     if not os.path.exists('data.bin'):
         extracted_faces = extract_faces()
         with open('data.bin', 'wb') as f:
@@ -95,6 +140,16 @@ def get_embeddings():
             return pickle.load(f)
 
 def cluster():
+    '''
+    Fits embeddings into Kmeans clustering algorithm and returns predicted cluster indices of all images, cluster centers, fitted model
+
+    Parameters
+    --------------------------
+    None
+
+    Returns
+    tuple
+    '''
     embeddings = get_embeddings()
 
     clustering_alg = KMeans(n_clusters=17, random_state=42)
@@ -102,6 +157,17 @@ def cluster():
     return clustering_alg.fit_predict(np.array([k.detach().numpy() for k in embeddings])), clustering_alg.cluster_centers_, clustering_alg
 
 def sort_into_groups():
+    '''
+    Identifies which cluster group belongs to which person (dir name) and accuracy of the cluster (defined as the number of correctly 
+    identified persons in cluster / cluster size)
+
+    Parameters
+    -----------------------------------
+    None
+
+    Returns 
+    dict
+    '''
     predicted_clusters, centers, alg = cluster()
     directory_img_mapping = face_dir_mapping()
 
@@ -123,6 +189,18 @@ def sort_into_groups():
     return cluster_idx_to_person
 
 def find_corresponding_cluster(img_file):
+    '''
+    Provided a custom image of any person belonging to the 17 classes in dataset, returns predicted cluster index. Use 
+    this function along with sort_into_groups to extract the name of the person.
+
+    Parameters
+    -------------------------------
+    img_file: image file path
+
+    Returns
+    -------------------------------
+    np.ndarray
+    '''
     ext = extract_face(img_file)
     tensor = torch.tensor(ext, dtype=torch.float32).permute(2, 0, 1)
     tensor = (tensor / 127.5) - 1.0
