@@ -9,12 +9,18 @@ def liveplot(model, train_data, n_epochs, learning_rate, batch_size, validation_
 
     Parameters
     --------------------------
-    model: MLP object \n
-    train_data: Training data \n
-    n_epochs: Epochs to train for \n
-    learning_rate: SGD parameter \n
-    batch_size: mini-batch size for SGD \n
-    validation_data: test_data to validate model against
+    model: MLP 
+        MLP object \n
+    train_data: list 
+        Training data \n
+    n_epochs: int 
+        Epochs to train for \n
+    learning_rate: float 
+        SGD parameter \n
+    batch_size: int 
+        mini-batch size for SGD \n
+    validation_data: list 
+        test_data to validate model against
 
     Returns
     ----------------------------

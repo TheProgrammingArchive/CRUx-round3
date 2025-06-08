@@ -6,7 +6,8 @@ def sigmoid(z):
 
     Parameters
     -------------------
-    z: input vector
+    z: np.ndarray
+        input vector
 
     Returns
     -------------------
@@ -20,7 +21,8 @@ def sigmoid_prime(z):
 
     Parameters
     ------------------
-    z: input vector
+    z: np.ndarray
+        input vector
 
     Returns
     ---------------
@@ -34,7 +36,8 @@ def softmax(z):
 
     Parameters
     ------------------
-    z: input vector
+    z: np.ndarray
+        input vector
 
     Returns
     ---------------
@@ -50,8 +53,10 @@ def sigmoid_loss(y, y_pred):
 
     Parameters
     -------------------
-    y: y_true, the true labels \n
-    y_pred: predicted labels 
+    y: np.ndarray
+        y_true, the true labels \n
+    y_pred: np.ndarray 
+        predicted labels 
 
     Returns
     -------------
@@ -67,8 +72,10 @@ def softmax_loss(y, y_pred):
 
     Parameters
     -------------------
-    y: y_true, the true labels \n
-    y_pred: predicted labels 
+    y: np.ndarray
+        y_true, the true labels \n
+    y_pred: np.ndarray 
+        predicted labels 
 
     Returns
     -----------------

@@ -5,6 +5,29 @@ import copy
 import itertools
 
 class EarlyStopping:
+    '''
+    Used to represent early stopping parameters
+
+    Attributes
+    -----------------------
+    monitor: str
+        'acc' or 'loss' to monitor accuracy or loss as early stopping metric
+
+    patience: int (default = 1)
+        Number of epochs to wait after no improvement in metric to end training
+
+    restore_best_weights: bool (default=True)
+        Restore model best weights after early stopping is called
+
+    min_delta: float (default=0)
+        Change in metric to be considered as an improvement in model parameters 
+
+        
+    Methods
+    --------------------
+    continue_training(epoch_results)
+        Returns (bool) on whether to continue training or not based on current metric
+    '''
     def __init__(self, monitor='acc', patience=1, restore_best_weights=True, min_delta=0):
         self.monitor = monitor
 
