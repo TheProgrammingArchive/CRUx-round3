@@ -3,36 +3,23 @@ from matplotlib import pyplot
 from matplotlib.animation import FuncAnimation
 from random import randrange
 
+def liveplot(model, train_data, n_epochs, learning_rate, batch_size, validation_data):
+    '''
+    Plots live graphs showing accuracy and loss vs epoch 
 
-import numpy as np
-import keras
-from mlp import MLP, EarlyStopping, grid_search
-from sklearn.linear_model import SGDClassifier
+    Parameters
+    --------------------------
+    model: MLP object \n
+    train_data: Training data \n
+    n_epochs: Epochs to train for \n
+    learning_rate: SGD parameter \n
+    batch_size: mini-batch size for SGD \n
+    validation_data: test_data to validate model against
 
-def prepare_data(data):
-    X, y = data
-    X = X.astype('float64')/255.
-    X = [np.reshape(x, (784, 1)) for x in X]
-
-    y_fin = [None for k in range(len(X))]
-    for idx, y_ in enumerate(y):
-        y_vec = np.zeros((10, 1))
-        y_vec[y_] = 1
-        y_fin[idx] = y_vec
-
-    return list(zip(X, y_fin))
-
-
-data = keras.datasets.fashion_mnist.load_data()
-train_data, test_data = data
-
-train_data = prepare_data(train_data)
-test_data = prepare_data(test_data)
-
-# Custom-model
-modelr = MLP([784, 128, 64, 10])
-
-def test(model, train_data, n_epochs, learning_rate, batch_size, validation_data):
+    Returns
+    ----------------------------
+    None
+    '''
     x_data, y_data, y1_data = [], [], []
 
     figure, ax = pyplot.subplots()
@@ -63,5 +50,3 @@ def test(model, train_data, n_epochs, learning_rate, batch_size, validation_data
     animation = FuncAnimation(figure, update, interval=200, cache_frame_data=False)
 
     pyplot.show()
-
-test(modelr, train_data=train_data, n_epochs=3, learning_rate=0.1, batch_size=16, validation_data=test_data[:1000])
