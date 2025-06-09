@@ -5,7 +5,7 @@ from random import randrange
 
 def liveplot(model, train_data, n_epochs, learning_rate, batch_size, validation_data):
     '''
-    Plots live graphs showing accuracy and loss vs epoch 
+    Plots live graph showing accuracy and loss vs epoch, accepts all parameters of MLP.fit method
 
     Parameters
     --------------------------
@@ -35,6 +35,11 @@ def liveplot(model, train_data, n_epochs, learning_rate, batch_size, validation_
     assert(n_epochs >= 0)
 
     def update(frame):
+        if len(x_data) == n_epochs:
+            animation.event_source.stop()
+            x = input('Training complete, press any key to terminate plot')
+            pyplot.close(figure)
+
         l, a = model.fit(train_data=train_data, n_epochs=1, learning_rate=learning_rate, batch_size=batch_size, validation_data=validation_data)
         x_data.append(len(x_data))
         y_data.append(l[-1])
@@ -45,11 +50,6 @@ def liveplot(model, train_data, n_epochs, learning_rate, batch_size, validation_
 
         ax.relim()
         ax.autoscale_view()
-
-        if len(x_data) == n_epochs:
-            animation.event_source.stop()
-            x = input('Training complete, press any key to terminate plot')
-            pyplot.close(figure)
 
         return line, liner
 
