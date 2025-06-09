@@ -152,7 +152,7 @@ def cluster():
     '''
     embeddings = get_embeddings()
 
-    clustering_alg = KMeans(n_clusters=17, random_state=42)
+    clustering_alg = KMeans(n_clusters=17)
     
     return clustering_alg.fit_predict(np.array([k.detach().numpy() for k in embeddings])), clustering_alg.cluster_centers_, clustering_alg
 
