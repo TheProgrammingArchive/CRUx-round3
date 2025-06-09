@@ -45,6 +45,9 @@ class EarlyStopping:
         elif monitor == 'loss':
             self.curr = float('inf')
 
+        else:
+            raise Exception("Unknown parameter to monitor. Choose either accuracy (acc) or loss (loss)")
+
     def continue_training(self, epoch_results: tuple):
         if self.iters_to_patience == self.patience:
             return False, False
