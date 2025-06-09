@@ -6,7 +6,7 @@ import itertools
 
 class EarlyStopping:
     '''
-    Used to represent early stopping parameters
+    Used to implement early stopping when best model metrics are achieved
 
     Attributes
     -----------------------
@@ -55,9 +55,6 @@ class EarlyStopping:
                 self.iters_to_patience = 0
             else:
                 self.iters_to_patience += 1
-
-            print(acc, self.iters_to_patience)
-
         else:
             loss = epoch_results['loss']
             if loss < self.curr - self.min_delta:
@@ -70,22 +67,48 @@ class EarlyStopping:
         return True, self.iters_to_patience == 0
     
 class MLP:
+    '''
+    Classification MLP implemented using numpy, all hidden layers have sigmoid activation and the last layer has softmax activation. Implements SGD optimizer to 
+    adjust weights and biases after each epoch.
+
+    Attributes
+    -----------------------
+    layers: list
+        Provide a list of integers which denotes the number of neurons in each layer. First element of the list is the input dimension (784 (28x28 img) for MNIST), 
+        last element is the number of output classes (10 for MNIST). <b>example: [784, 128, 64, 10] -> initializes a model with 2 hidden layers with 128 and 64 units each </b>
+    
+    Methods
+    ----------------------
+    <b>fit(train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop=None, return_weights_biases=False) \n
+    predict(data) \n
+    evaluate(validation_data)</b>
+    '''
     def __init__(self, layers: list):
-        '''
-            layers: Provide number of neurons per layer in form of a list, [input_layers, hidden1, hidden2, ..., hiddenk, output]
-            output_activation: Change activation function depending on task (classification/regression), optimal loss function is chosen automatically
-        '''
         self.layer_count = len(layers)
         self.hidden_layers = self.layer_count - 1
         self.layers = layers
         
-        # Randomly initialize weights
+        # Randomly initialize weights using Xavier initialization
         self.weights = [np.random.randn(y, x) * np.sqrt(2.0 / (x + y))
                         for x, y in zip(layers[:-1], layers[1:])]
         self.biases = [np.random.randn(y, 1) for y in layers[1: ]]
 
 
     def __feed_forward(self, activation):
+        '''
+        Provided input activation vector, passes it through all layers in the neural network and returns a list of all activations and z vectors in each layer, 
+        last element is the output activation/zvector
+
+        Parameters
+        -----------------------
+        activation: np.ndarray
+            input vector
+
+        Returns
+        -----------------------
+        tuple(np.ndarray, np.ndarray):
+            activations and z vectors
+        '''
         z_vectors = []
         activations = [activation]
         current_layer = 0
@@ -106,6 +129,18 @@ class MLP:
     
 
     def __update_weights(self, batch, learning_rate):
+        '''
+        Adjusts weights and biases after obtaining cost derivative wrt bias and weights by backpropagation.
+
+        Parameters
+        -----------------------------
+        batch: list
+            List of vectors, size of batch is provided in fit method
+
+        Returns
+        -----------------------------
+        None
+        '''
         weight_update = [np.zeros(w.shape) for w in self.weights]
         bias_update = [np.zeros(b.shape) for b in self.biases]
         for X, y in batch:
@@ -118,6 +153,22 @@ class MLP:
 
 
     def __back_propagate(self, x, y):
+        '''
+        Backpropagate algorithm implementation. Provided input vector x and corresponding true y label for this vector,
+        calculates gradient of cost wrt bias and gradient of cost wrt weights by chain rule
+
+        Parameters
+        -----------------------------
+        x: np.ndarray
+            Input vector
+        y: np.ndarray
+            y true labels
+
+        Returns
+        ----------------------------
+        tuple(list, list):
+            Gradient of cost function wrt bias and weights
+        '''
         z_vectors, activations = self.__feed_forward(x)
         delta = activations[-1] - y
         
@@ -125,20 +176,40 @@ class MLP:
         grad_c_wrt_bias = [np.zeros(b.shape) for b in self.biases]
 
         grad_c_wrt_bias[-1] = delta
-        grad_c_wrt_weights[-1] = np.outer(delta, activations[-2].T)
+        grad_c_wrt_weights[-1] = np.dot(delta, activations[-2].T)
 
         for layer in range(2, self.layer_count):
             delta = np.dot(self.weights[-layer + 1].transpose(), delta) * sigmoid_prime(z_vectors[-layer])
 
             grad_c_wrt_bias[-layer] = delta
-            grad_c_wrt_weights[-layer] = np.outer(delta, activations[-layer - 1].T)
+            grad_c_wrt_weights[-layer] = np.dot(delta, activations[-layer - 1].T)
 
         return grad_c_wrt_bias, grad_c_wrt_weights
     
 
     def fit(self, train_data, n_epochs, learning_rate, batch_size=16, validation_data=None, early_stop=None, return_weights_biases=False):
         '''
-        SGD optimizer on mini-batches to update weights and biases
+        Fits model on training data for given number of epochs and validates it on validation_data (if provided) and implements SGD algorithm 
+        with provided learning rate.
+
+        Parameters:
+        train_data: list (Should be zipped along with y labels, that is each element of the list is a tuple with 0th index X and 1st index y true labels)
+            Data on which the model trains on
+
+        learning_rate: int
+            Learning rate parameter for SGD algorithm (How much the weights and biases change)
+
+        batch_size: int
+            Batch size for SGD (Amount of samples fed into the MLP network)
+
+        valiation_data: list (Should be zipped along with y labels, that is,  each element of the list is a tuple with 0th index X and 1st index y true labels)
+            Data on which the model validates on, must not be None for EarlyStopping if used, no accuracy/loss metric is provided if None
+
+        early_stop: EarlyStopping
+            EarlyStopping object
+
+        return_weights_biases: bool
+            Returns weights and biases of the model if True, can be used to save model weights and biases in a binary file for future use.
         '''
         losses, accuracies = [], []
 
@@ -182,12 +253,35 @@ class MLP:
         return losses, accuracies
 
     def predict(self, data):
+        '''
+            Predict class of provided data, accepts only 1 data sample.
+
+            Parameters
+            ------------------------
+            data: np.ndarray
+                Data sample to predict class label for
+
+            Returns
+            -------------------------
+            int: predicted label
+        '''
         test_results = self.__feed_forward(data)[1][-1]
         
         return np.argmax(test_results)
 
 
     def evaluate(self, validation_data):
+        '''
+        Provided validation_data, returns number of correctly identifed samples and cross-entropy loss. 
+
+        Parameters:
+        -----------------------
+        validation_data: list (Should be zipped along with y labels, that is, each element of the list is a tuple with 0th index X and 1st index y true labels)
+
+        Returns:
+        -----------------------
+        tuple(int, float): Number of correctly identified samples and cross-entropy loss
+        '''
         test_results = [(self.__feed_forward(x)[1][-1], y) for (x, y) in validation_data]
         loss = 0
         correct = 0
@@ -199,6 +293,29 @@ class MLP:
         return correct, loss / len(validation_data)
     
 def grid_search(train_data, test_data, param_grid: dict, metric='acc') -> MLP:
+    '''
+    Implements grid search to find and return best model weights and biases and the best parameters
+
+    Parameters
+    ---------------------
+    train_data: list (Expects X and y values to be zipped together), (for MNIST) Dimensions of each X: (784, 1). Dimensions of each Y: (10, 1)
+        Data to train model on
+    test_data:  list (Expects X and y values to be zipped together), (for MNIST) Dimensions of each X: (784, 1). Dimensions of each Y: (10, 1)
+        Data to evaluate model on
+    param_grid: dict
+        Parameters: layers, list of model layers. <b>example: [[784, 64, 10], [784, 128, 64, 10]]</b> \n
+                    learning_rate: list of learning rates. <b>example: [0.1, 1]</b> \n
+                    batch_size: list of batch sizes. <b>example: [32, 64]</b> \n
+                    n_epochs: list of number of epochs <b>example: [10, 20]</b>
+
+    Raises
+    -----------------------
+    Exception: if any of the grid search parameters are missing
+
+    Returns
+    -----------------------
+    tuple(MlP, dict)
+    '''
     layer_combs = param_grid.get('layers')
     learning_rates = param_grid.get('learning_rate')
     batch_sizes = param_grid.get('batch_size')
