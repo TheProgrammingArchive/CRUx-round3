@@ -46,6 +46,8 @@ class EarlyStopping:
             self.curr = float('inf')
 
     def continue_training(self, epoch_results: tuple):
+        if self.iters_to_patience == self.patience:
+            return False, False
         if self.monitor == 'acc':
             acc = epoch_results['acc']
             if acc > self.curr + self.min_delta:
@@ -53,6 +55,8 @@ class EarlyStopping:
                 self.iters_to_patience = 0
             else:
                 self.iters_to_patience += 1
+
+            print(acc, self.iters_to_patience)
 
         else:
             loss = epoch_results['loss']
@@ -62,11 +66,8 @@ class EarlyStopping:
 
             else:
                 self.iters_to_patience += 1
-
-        if self.iters_to_patience == self.patience:
-            return False
         
-        return True
+        return True, self.iters_to_patience == 0
     
 class MLP:
     def __init__(self, layers: list):
@@ -84,7 +85,7 @@ class MLP:
         self.biases = [np.random.randn(y, 1) for y in layers[1: ]]
 
 
-    def feed_forward(self, activation):
+    def __feed_forward(self, activation):
         z_vectors = []
         activations = [activation]
         current_layer = 0
@@ -104,11 +105,11 @@ class MLP:
         return z_vectors, activations
     
 
-    def update_weights(self, batch, learning_rate):
+    def __update_weights(self, batch, learning_rate):
         weight_update = [np.zeros(w.shape) for w in self.weights]
         bias_update = [np.zeros(b.shape) for b in self.biases]
         for X, y in batch:
-            grad_c_wrt_bias, grad_c_wrt_weights = self.back_propagate(X, y)
+            grad_c_wrt_bias, grad_c_wrt_weights = self.__back_propagate(X, y)
             weight_update = [wu + du for wu, du in zip(weight_update, grad_c_wrt_weights)]
             bias_update = [bu + du for bu, du in zip(bias_update, grad_c_wrt_bias)]
 
@@ -116,8 +117,8 @@ class MLP:
         self.biases = [bias - (learning_rate/len(batch))*update for bias, update in zip(self.biases, bias_update)]
 
 
-    def back_propagate(self, x, y):
-        z_vectors, activations = self.feed_forward(x)
+    def __back_propagate(self, x, y):
+        z_vectors, activations = self.__feed_forward(x)
         delta = activations[-1] - y
         
         grad_c_wrt_weights = [np.zeros(w.shape) for w in self.weights]
@@ -143,40 +144,37 @@ class MLP:
 
         best_weights, best_biases = None, None
 
-        with open('dataw.txt', 'a+') as file:
-            file.truncate(0)
-            for epoch in range(n_epochs):
-                random.shuffle(train_data)
-                batches = []
-                for k in range(0, len(train_data), batch_size):
-                    batches.append(train_data[k: k + batch_size])
+        for epoch in range(n_epochs):
+            random.shuffle(train_data)
+            batches = []
+            for k in range(0, len(train_data), batch_size):
+                batches.append(train_data[k: k + batch_size])
 
-                for batch in batches:
-                    self.update_weights(batch, learning_rate)
+            for batch in batches:
+                self.__update_weights(batch, learning_rate)
 
-                if validation_data:
-                    res = self.evaluate(validation_data)
-                    print(f'Epoch: {epoch}| Accuracy: {res[0]/len(validation_data)}, Loss: {res[1]}')
-                    losses.append(res[1])
-                    accuracies.append(res[0]/len(validation_data))
+            if validation_data:
+                res = self.evaluate(validation_data)
+                print(f'Epoch: {epoch}| Accuracy: {res[0]/len(validation_data)}, Loss: {res[1]}')
+                losses.append(res[1])
+                accuracies.append(res[0]/len(validation_data))
 
-                    file.write(f'{epoch},{accuracies[-1]},{losses[-1]}\n')
-                    file.flush()
+            else:
+                print(f'Epoch: {epoch} complete!')
+
+            if early_stop and validation_data:
+                cnt_trn = early_stop.continue_training({'acc': accuracies[-1], 'loss': losses[-1]})
+
+                if not cnt_trn[0]:
+                    if early_stop.restore_best_weights:
+                        self.weights = copy.deepcopy(best_weights)
+                        self.biases = copy.deepcopy(best_biases)
+
+                    print(f'Early stopping called, training stopped on epoch: {epoch}. No improvement in metrics for {early_stop.patience} epochs')
+                    break
 
                 else:
-                    print(f'Epoch: {epoch} complete!')
-
-                if early_stop and validation_data:
-                    cnt_trn = early_stop.continue_training({'acc': accuracies[-1], 'loss': losses[-1]})
-                    if not cnt_trn:
-                        if early_stop.restore_best_weights:
-                            self.weights = copy.deepcopy(best_weights)
-                            self.biases = copy.deepcopy(best_biases)
-
-                        print(f'Early stopping called, training stopped on epoch: {epoch}. No improvement in metrics for {early_stop.patience} epochs')
-                        break
-
-                    else:
+                    if cnt_trn[1]:
                         best_weights, best_biases = copy.deepcopy(self.weights), copy.deepcopy(self.biases)
 
         if return_weights_biases:
@@ -184,13 +182,13 @@ class MLP:
         return losses, accuracies
 
     def predict(self, data):
-        test_results = self.feed_forward(data)[1][-1]
+        test_results = self.__feed_forward(data)[1][-1]
         
         return np.argmax(test_results)
 
 
     def evaluate(self, validation_data):
-        test_results = [(self.feed_forward(x)[1][-1], y) for (x, y) in validation_data]
+        test_results = [(self.__feed_forward(x)[1][-1], y) for (x, y) in validation_data]
         loss = 0
         correct = 0
         
